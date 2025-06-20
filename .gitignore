@@ -5,7 +5,8 @@ venv
 *.log
 clembench
 clembench-runs
-playpen-records
+playpen-records/
+playpen-eval/
 results
 **/results.jsonl
 **/results.jsonl.zip
