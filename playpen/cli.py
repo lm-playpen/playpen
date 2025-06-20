@@ -3,7 +3,7 @@ import inspect
 import importlib.util as importlib_util
 import json
 import os
-from typing import Dict
+from typing import Dict, Callable, List
 
 import clemcore.cli as clem
 from clemcore.backends import ModelSpec, ModelRegistry, BackendRegistry
@@ -76,27 +76,34 @@ def store_eval_score(file_path, name, value):
     new_scores = {**scores, **{name: value}}
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(new_scores, f)
+    print(json.dumps(new_scores, indent=2))
     return new_scores
+
+
+def to_task_selector(dataset) -> Callable[[str, str], List[int]]:
+    import collections
+    tasks_by_group = collections.defaultdict(list)
+    for row in dataset:  # a list of rows with game, experiment, task_id columns
+        key = (row['game'], row['experiment'])
+        tasks_by_group[key].append(int(row['task_id']))
+    return lambda game, experiment: tasks_by_group[(game, experiment)]
 
 
 def evaluate(suite: str, model_spec: ModelSpec, gen_args: Dict, results_dir: str, game_selector: str,
              skip_gameplay: bool):
     results_file = os.path.join(results_dir, f"{model_spec.model_name}.val.json")
     if suite in ["all", "clem"]:
-        import glob
-        import pandas as pd
         if not skip_gameplay:
-            clem.run(game_selector, [model_spec], gen_args=gen_args,
-                     instances_name="instances", results_dir=results_dir)
+            from datasets import load_dataset
+            dataset = load_dataset("colab-potsdam/playpen-data", "instances", split="validation")
+            task_selector = to_task_selector(dataset)
+            clem.run(game_selector, [model_spec], gen_args=gen_args, results_dir=results_dir,
+                     instances_filename="instances", task_selector=task_selector)
         # clem.score(game_selector, results_dir) # already done during run
         clem.transcripts("all", results_dir)  # these will contain only the played games anyway
-        clem.clemeval.perform_evaluation(results_dir)  # this stores results.csv
-        results_files = glob.glob(f"{results_dir}/**/results.csv", recursive=True)
-        assert len(results_files), f"There should be only a single 'results.csv' within '{results_dir}' sub-dirs."
-        df = pd.read_csv(results_files[0])
+        df = clem.clemeval.perform_evaluation(results_dir, return_dataframe=True)
         clem_score = df["-, clemscore"][0]
-        scores = store_eval_score(results_file, "clemscore", clem_score)
-        print(json.dumps(scores, indent=2))
+        store_eval_score(results_file, "clemscore", clem_score)
     if suite in ["all", "stat"]:
         ...
 
