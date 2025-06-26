@@ -1,4 +1,6 @@
-# Playpen
+![Playpen Logo](./playpen-logo.png)
+
+[Pre-Print](https://arxiv.org/abs/2504.08590)
 
 All you need to get started with the LM Playpen Environment for Learning in Interaction.
 
