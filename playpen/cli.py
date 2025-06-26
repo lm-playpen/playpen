@@ -99,13 +99,13 @@ def evaluate(suite: str, model_spec: ModelSpec, gen_args: Dict, results_dir: str
             task_selector = to_task_selector(dataset)
             clem.run(game_selector, [model_spec], gen_args=gen_args, results_dir=results_dir,
                      instances_filename="instances", task_selector=task_selector)
-        # clem.score(game_selector, results_dir) # already done during run
+        # clem.score(game_selector, results_dir) # already done during run in clemcore 2.x
         clem.transcripts("all", results_dir)  # these will contain only the played games anyway
         df = clem.clemeval.perform_evaluation(results_dir, return_dataframe=True)
         clem_score = df["-, clemscore"][0]
         store_eval_score(results_file, "clemscore", clem_score)
     if suite in ["all", "stat"]:
-        ...
+        ...#todo: continue here with FMs
 
 
 def cli(args: argparse.Namespace):
@@ -160,7 +160,7 @@ def main():
                               help="The token limit for generated responses. Should be the same as during training. "
                                    "Default: 300.")
 
-    # todo: for now directly bound the eval to the playpen-data validate split
+    # Note: For now, we directly bound the eval to the playpen-data validate split.
     eval_parser = sub_parsers.add_parser("eval",
                                          description="Run the playpen eval pipelines to compute clem- and statscore.")
     eval_parser.add_argument("model", type=str,
