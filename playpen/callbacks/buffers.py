@@ -1,11 +1,9 @@
 from typing import TYPE_CHECKING, Dict
 
-from clemcore.clemgame import GameBenchmarkCallback, GameStep
+from clemcore.clemgame import GameBenchmarkCallback, GameStep, GameMaster
 
-from playpen.buffers import EpisodeBuffer
-
-if TYPE_CHECKING:  # to satisfy pycharm
-    from clemcore.clemgame import GameMaster
+from playpen.branching.master import BranchingGameMaster
+from playpen.buffers import EpisodeBuffer, BranchingEpisodeBuffer
 
 
 class EpisodeBufferCallback(GameBenchmarkCallback):
@@ -18,3 +16,13 @@ class EpisodeBufferCallback(GameBenchmarkCallback):
 
     def on_game_step(self, game_master: "GameMaster", game_instance: Dict, game_step: GameStep):
         self.episode_buffer.add_step(game_step.context, game_step.response, game_step.done, game_step.info)
+
+
+class BranchingEpisodeBufferCallback(GameBenchmarkCallback):
+
+    def __init__(self, episode_buffer: BranchingEpisodeBuffer):
+        self.episode_buffer = episode_buffer
+
+    def on_game_end(self, game_master: "BranchingGameMaster", game_instance: Dict):
+        episode_tree = game_master.get_active_tree()
+        self.episode_buffer.add_episode_tree(episode_tree)

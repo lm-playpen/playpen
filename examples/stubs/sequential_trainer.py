@@ -2,7 +2,7 @@ import time
 from pathlib import Path
 
 from clemcore.backends import Model
-from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, benchmark, \
+from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, GameBenchmark, \
     InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver
 from clemcore.clemgame.runners import sequential
 from playpen import BasePlayPen, to_sub_selector
@@ -44,7 +44,7 @@ class BatchwisePlayPenTrainer(BasePlayPen):
         game_instance_iterator = GameInstanceIterator.from_game_spec(game_spec, sub_selector=to_sub_selector(dataset))
 
         # We initialize the game benchmark which creates the game master for each game instance
-        with benchmark.load_from_spec(game_spec) as game_benchmark:
+        with GameBenchmark.load_from_spec(game_spec) as game_benchmark:
             # We run as many epochs over all game instances as specified
             for epoch in range(self.num_epochs):
                 # We collect the episodes using the batchwise runner from clemcore
@@ -70,6 +70,7 @@ class BatchwisePlayPenTrainer(BasePlayPen):
     def _train(self):
         # Convert the collected trajectories into conversational data format
         conversational_dataset = self.episode_buffer.to_conversational_dataset(self.learner)
+        print("Collected episodes:", len(conversational_dataset))
         # Apply a training algorithm of your choice
         print("Training...")
         time.sleep(1)

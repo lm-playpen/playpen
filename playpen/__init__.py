@@ -1,9 +1,3 @@
-import os
-
-from playpen.callbacks.buffers import EpisodeBufferCallback
-
-os.environ["CLEM_DISABLE_BANNER"] = "1"
-
 BANNER = \
     r"""
 .--------------..--------------..--------------..--------------..--------------..--------------..--------------.
@@ -15,22 +9,23 @@ BANNER = \
 |  |_____|     ||  |________|  |||____|  |____|||   |______|   ||  |_____|     || |_________|  |||_____|\____| |
 '--------------''--------------''--------------''--------------''--------------''--------------''--------------'
 """  # Blocks font, thanks to http://patorjk.com/software/taag/
+import os
 
 if os.getenv("PLAYPEN_DISABLE_BANNER", "0") not in ("1", "true", "yes", "on"):
     print(BANNER)
 
 from typing import List, Callable
 
-from playpen.buffers import EpisodeBuffer, BranchingRolloutBuffer
+from playpen.callbacks.buffers import EpisodeBufferCallback, BranchingEpisodeBufferCallback
+from playpen.buffers import EpisodeBuffer, BranchingEpisodeBuffer
 from playpen.base import BasePlayPen
-from playpen.envs.branching_env import GameBranchingEnv
 
 __all__ = [
     "EpisodeBuffer",
     "EpisodeBufferCallback",
+    "BranchingEpisodeBuffer",
+    "BranchingEpisodeBufferCallback",
     "BasePlayPen",
-    "BranchingRolloutBuffer",
-    "GameBranchingEnv",
     "to_sub_selector"
 ]
 
