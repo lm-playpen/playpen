@@ -2,38 +2,47 @@ import time
 from pathlib import Path
 
 from clemcore.backends import Model
-from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, benchmark, \
+from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, GameBenchmark, \
     InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver
 from clemcore.clemgame.runners import sequential
 from playpen import BasePlayPen, to_sub_selector
 from datasets import load_dataset
 
-from playpen.buffers import EpisodeBuffer
-from playpen.callbacks.buffers import EpisodeBufferCallback
+from playpen.branching.master import BranchingGameBenchmark
+from playpen.buffers import BranchingEpisodeBuffer
+from playpen.callbacks.buffers import BranchingEpisodeBufferCallback
 from playpen.callbacks.files import EpochResultsFolder, EpochResultsFolderCallback
 
 
-class BatchwisePlayPenTrainer(BasePlayPen):
+class BranchingPlayPenTrainer(BasePlayPen):
 
     def __init__(self, learner: Model):
         super().__init__(learner)
-        self.num_epochs = 4
-        self.episode_buffer = EpisodeBuffer()
+        self.num_epochs = 1
+        # We configure necessary parameters for the branching run
+        self.branching_factor = 2
+        self.branching_criteria = self.is_learning_player
+        # We use the episode buffer that support branching during game play
+        self.episode_buffer = BranchingEpisodeBuffer()
         # setup callbacks for the clem benchmark run
-        results_folder = EpochResultsFolder(Path("playpen-records"), [learner])
+        results_folder = EpochResultsFolder(Path("playpen-branching-records"), [learner])
         model_infos = Model.to_infos([learner])
         self.callbacks = GameBenchmarkCallbackList([
             # a callback to collect episodes into the buffer during the benchmark run
-            EpisodeBufferCallback(self.episode_buffer),
+            BranchingEpisodeBufferCallback(self.episode_buffer),
             # a callback to increase the epoch number in the result folder
-            EpochResultsFolderCallback(results_folder),
+            # EpochResultsFolderCallback(results_folder),
             # a callback to save the instance.json using the epoch result folder structure
-            InstanceFileSaver(results_folder),
+            # InstanceFileSaver(results_folder),
             # a callback to save the experiment.json using the epoch result folder structure
-            ExperimentFileSaver(results_folder, model_infos),
+            # ExperimentFileSaver(results_folder, model_infos),
             # a callback to save the interactions.json and requests.json using the epoch result folder structure
-            InteractionsFileSaver(results_folder, model_infos)
+            # InteractionsFileSaver(results_folder, model_infos)
         ])
+
+    def is_learning_player(self, game_master: "GameMaster"):
+        player = game_master.current_player
+        return self.is_learner(player)
 
     def learn(self, game_registry: GameRegistry):
         # We use the taboo game to showcase the basic playpen flow
@@ -44,7 +53,7 @@ class BatchwisePlayPenTrainer(BasePlayPen):
         game_instance_iterator = GameInstanceIterator.from_game_spec(game_spec, sub_selector=to_sub_selector(dataset))
 
         # We initialize the game benchmark which creates the game master for each game instance
-        with benchmark.load_from_spec(game_spec) as game_benchmark:
+        with GameBenchmark.load_from_spec(game_spec) as game_benchmark:
             # We run as many epochs over all game instances as specified
             for epoch in range(self.num_epochs):
                 # We collect the episodes using the batchwise runner from clemcore
@@ -58,10 +67,13 @@ class BatchwisePlayPenTrainer(BasePlayPen):
         # We reset the episode buffer before each epoch over game instances
         # Note: We could also collect episodes over multiple epochs by calling reset only later
         self.episode_buffer.reset()
+        # We decorate the game_benchmark with the branching capabilities
+        branching_game_benchmark = BranchingGameBenchmark(game_benchmark)
         # We invoke the sequential runner to collect the episode trajectories for the game instance,
-        # so that all game instances are played one after the other. This mode is supported by all models.
+        # so that all game instances are played one after the other, but each episode branches at
+        # certain points in time. This mode is supported by all models.
         sequential.run(
-            game_benchmark,
+            branching_game_benchmark,
             game_instance_iterator,
             [self.learner],
             callbacks=self.callbacks,
@@ -70,6 +82,7 @@ class BatchwisePlayPenTrainer(BasePlayPen):
     def _train(self):
         # Convert the collected trajectories into conversational data format
         conversational_dataset = self.episode_buffer.to_conversational_dataset(self.learner)
+        print("Collected episodes:", len(conversational_dataset))
         # Apply a training algorithm of your choice
         print("Training...")
         time.sleep(1)

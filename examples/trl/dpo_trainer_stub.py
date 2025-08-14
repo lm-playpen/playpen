@@ -7,27 +7,6 @@ from playpen import BasePlayPen, RolloutProgressCallback, GameRecordCallback, ma
 from datasets import Dataset
 
 
-class DPORolloutBuffer(BranchingRolloutBuffer):
-
-    def to_preference_dataset(self, perspective: Model, data_format="conversational") -> Dataset:
-        """
-        Transform the branching rollout buffer to a preference dataset for, e.g., DPO learning.
-
-        # Standard format
-        preference_example = {"prompt": "The sky is", "chosen": " blue.", "rejected": " green."}
-
-        # Conversational format
-        preference_example = {"prompt": [{"role": "user", "content": "What color is the sky?"}],
-                              "chosen": [{"role": "assistant", "content": "It is blue."}],
-                              "rejected": [{"role": "assistant", "content": "It is green."}]}
-
-        :param perspective: of a model generating the responses
-        :param data_format: conversational or standard
-        :return: a preference dataset as described in https://huggingface.co/docs/trl/dataset_formats#preference
-        """
-        return Dataset.from_list([])
-
-
 class DPOPlayPenTrainer(BasePlayPen):
     """
     Then, fine-tuning a language model via DPO consists of two steps and is easier than PPO:
@@ -48,9 +27,9 @@ class DPOPlayPenTrainer(BasePlayPen):
 
     def learn(self, game_registry: GameRegistry):
         # The tree env branches each step N times as specified by the branching_factor and branching_criteria
-        def branch_on_guesser(env: GameEnv):
+        def branch_on_guesser(game_master: "GameMaster"):
             # In this example, the learner plays both roles, so we also specify to branch only on a specific game role
-            player = env.master.current_player
+            player = game_master.current_player
             return self.is_learner(player) and player.game_role == "WordGuesser"
 
         # For example, lets run the mock model on taboo with 16 rollout_steps.
