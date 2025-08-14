@@ -24,7 +24,7 @@ class BranchingGameBenchmark(GameBenchmark):
     def __init__(self,
                  game_benchmark: GameBenchmark,
                  *,
-                 branching_factor: int = 2,
+                 branching_factor: int = 1,
                  branching_criteria: Callable[[GameMaster], bool] = None):
         assert branching_factor > 0, "The branching factor must be greater than zero"
         super().__init__(game_benchmark.game_spec)
@@ -58,11 +58,12 @@ class BranchingGameMaster(GameMaster):
     def __init__(self,
                  game_master: GameMaster,
                  *,
-                 branching_factor: int = 2,
+                 branching_factor: int = 1,
                  branching_criteria: Callable[[GameMaster], bool] = None):
         super().__init__(game_master.game_spec, game_master.experiment, game_master.player_models)
         assert branching_factor > 0, "The branching factor must be greater than zero"
         self._root: GameMaster = game_master
+        self._done: bool = False
         self._game_tree = GameTree(GameTreeNode(self._root))
         self._active_masters: List[GameMaster] = [self._root]
         self._branching_factor: int = branching_factor
@@ -90,22 +91,19 @@ class BranchingGameMaster(GameMaster):
         )
         return branching_player, contexts
 
-    def step(self, responses: List[List[BranchingResponse]]) -> Tuple[List[List[bool]], List[List[Dict]]]:
+    def step(self, responses: List[List[BranchingResponse]]) -> Tuple[bool, List[List[Dict]]]:
         assert isinstance(responses, list), f"GameTreeEnv expects a list of responses and not {responses.__class__}"
 
-        context_dones = []
         context_infos = []
         candidates: List[BranchingCandidate] = []  # called candidates because we considered to apply a pruning function
         for context_responses in responses:
-            response_dones = []
             response_infos = []
             for response in context_responses:  # each response represents a possible branch in the tree
                 done, info = response.step()
-                response_dones.append(done)
+                info["done"] = done  # store done in info, because runners only handle single bool return value
                 response_infos.append(info)
                 candidate = BranchingCandidate(response, done, info)
                 candidates.append(candidate)
-            context_dones.append(response_dones)
             context_infos.append(response_infos)
 
         self._done = all([candidate.done for candidate in candidates])
@@ -116,7 +114,7 @@ class BranchingGameMaster(GameMaster):
             self._active_masters.append(candidate.response.branch_master)
 
         # return all dones and infos so that they match the quantity of the responses
-        return context_dones, context_infos
+        return self._done, context_infos
 
     def store_records(self, top_dir: str, rollout_dir: str, episode_dir: str):
         for branch_idx, game_master in enumerate(self._active_masters):
