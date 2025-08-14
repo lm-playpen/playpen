@@ -4,13 +4,13 @@ import importlib.util as importlib_util
 import json
 import os
 from pathlib import Path
-from typing import Dict, Callable, List
+from typing import Dict
 from datetime import datetime
 
 import clemcore.cli as clem
 from clemcore.backends import ModelSpec, ModelRegistry, BackendRegistry
 from clemcore.clemgame import GameRegistry, GameSpec
-from playpen import BasePlayPen
+from playpen import BasePlayPen, to_sub_selector
 
 
 def train(file_path: str, learner: ModelSpec, teacher: ModelSpec, temperature: float, max_tokens: int):
@@ -82,14 +82,6 @@ def store_eval_score(file_path: Path, name: str, value):
     return new_scores
 
 
-def to_task_selector(dataset) -> Callable[[str, str], List[int]]:
-    import collections
-    tasks_by_group = collections.defaultdict(list)
-    for row in dataset:  # a list of rows with game, experiment, task_id columns
-        key = (row['game'], row['experiment'])
-        tasks_by_group[key].append(int(row['task_id']))
-    return lambda game, experiment: tasks_by_group[(game, experiment)]
-
 
 def get_default_results_dir():
     timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -103,9 +95,8 @@ def evaluate_suite(suite: str, model_spec: ModelSpec, gen_args: Dict, results_di
     if dataset_name is not None:
         from datasets import load_dataset
         dataset = load_dataset("colab-potsdam/playpen-data", dataset_name, split="validation")
-        task_selector = to_task_selector(dataset)
         clem.run(game_selector, [model_spec],
-                 gen_args=gen_args, results_dir=suite_results_dir, task_selector=task_selector)
+                 gen_args=gen_args, results_dir=suite_results_dir, sub_selector=to_sub_selector(dataset))
     clem.score(game_selector, suite_results_dir)
     clem.transcripts(game_selector, suite_results_dir)
     df = clem.clemeval.perform_evaluation(suite_results_dir, return_dataframe=True)
