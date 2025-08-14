@@ -21,7 +21,7 @@ class BranchingPlayPenTrainer(BasePlayPen):
         self.num_epochs = 1
         # We configure necessary parameters for the branching run
         self.branching_factor = 2
-        self.branching_criteria = self.is_learning_player
+        self.branching_criteria = self.is_guesser
         # We use the episode buffer that support branching during game play
         self.episode_buffer = BranchingEpisodeBuffer()
         # setup callbacks for the clem benchmark run
@@ -40,9 +40,9 @@ class BranchingPlayPenTrainer(BasePlayPen):
             # InteractionsFileSaver(results_folder, model_infos)
         ])
 
-    def is_learning_player(self, game_master: "GameMaster"):
+    def is_guesser(self, game_master: "GameMaster"):
         player = game_master.current_player
-        return self.is_learner(player)
+        return self.is_learner(player) and player.game_role == "WordGuesser"  # we know this exists for taboo
 
     def learn(self, game_registry: GameRegistry):
         # We use the taboo game to showcase the basic playpen flow
@@ -68,7 +68,11 @@ class BranchingPlayPenTrainer(BasePlayPen):
         # Note: We could also collect episodes over multiple epochs by calling reset only later
         self.episode_buffer.reset()
         # We decorate the game_benchmark with the branching capabilities
-        branching_game_benchmark = BranchingGameBenchmark(game_benchmark)
+        branching_game_benchmark = BranchingGameBenchmark(
+            game_benchmark,
+            branching_factor=self.branching_factor,
+            branching_criteria=self.branching_criteria
+        )
         # We invoke the sequential runner to collect the episode trajectories for the game instance,
         # so that all game instances are played one after the other, but each episode branches at
         # certain points in time. This mode is supported by all models.
