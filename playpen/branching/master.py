@@ -1,10 +1,10 @@
-import os
 from copy import copy
 from functools import partial
 from typing import List, Dict, Callable, Tuple
 
 from clemcore.clemgame import GameBenchmark, GameMaster
 from clemcore.backends import Model
+from clemcore.clemgame.events import GameEventLogger
 
 from playpen.branching.player import BranchingStep, BranchingPlayer
 from playpen.branching.tree import GameTree, ResponseTreeNode, GameTreeNode
@@ -60,7 +60,7 @@ class BranchingGameMaster(GameMaster):
                  game_master: GameMaster,
                  *,
                  branching_factor: int = 1,
-                 branching_criteria: Callable[[GameMaster], bool] = None):
+                 branching_criteria: Callable[[GameMaster], bool] = lambda game_master: True):
         super().__init__(game_master.game_spec, game_master.experiment, game_master.player_models)
         assert branching_factor > 0, "The branching factor must be greater than zero"
         self._root: GameMaster = game_master
@@ -69,6 +69,12 @@ class BranchingGameMaster(GameMaster):
         self._active_parent_masters: List[GameMaster] = [self._root]
         self._branching_factor: int = branching_factor
         self._branching_criteria = branching_criteria
+
+    def register_many(self, loggers: List[GameEventLogger]):
+        self._root.register_many(loggers)
+
+    def register(self, logger: GameEventLogger):
+        self._root.register(logger)
 
     def setup(self, **game_instance):
         self._root.setup(**game_instance)
@@ -83,13 +89,13 @@ class BranchingGameMaster(GameMaster):
                         branching_criteria=self._branching_criteria),
                 self._active_parent_masters)
 
-    def step(self, parent_continuations: List[List[BranchingStep]]) -> Tuple[bool, List[List[Dict]]]:
-        assert isinstance(parent_continuations, list), \
-            f"Step expects a list of lists of responses and not {parent_continuations.__class__}"
+    def step(self, all_branching_steps: List[List[BranchingStep]]) -> Tuple[bool, List[List[Dict]]]:
+        assert isinstance(all_branching_steps, list), \
+            f"Step expects a list of lists of branching steps and not {all_branching_steps.__class__}"
 
         all_infos = []
         candidates: List[BranchingCandidate] = []  # called candidates because we considered to apply a pruning function
-        for branching_steps in parent_continuations:
+        for branching_steps in all_branching_steps:
             infos = []
             for branching_step in branching_steps:  # each response represents a possible branch in the tree
                 done, info = branching_step.apply()
@@ -108,10 +114,6 @@ class BranchingGameMaster(GameMaster):
 
         # return all dones and infos so that they match the quantity of the responses
         return self._done, all_infos
-
-    def store_records(self, top_dir: str, rollout_dir: str, episode_dir: str):
-        for branch_idx, game_master in enumerate(self._active_parent_masters):
-            game_master.store_records(top_dir, rollout_dir, os.path.join(episode_dir, f"branch_{branch_idx}"))
 
     def get_active_tree(self) -> "GameTree":
         """ Ad-hoc calculation of the tree containing only active branches """

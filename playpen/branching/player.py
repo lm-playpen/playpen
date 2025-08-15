@@ -26,11 +26,11 @@ class BranchingPlayer:
             parent_masters: List[GameMaster],
             *,
             branching_factor: int = 1,
-            branching_criteria: Callable = lambda game_master: True
+            branching_criteria: Callable[[GameMaster], bool] = lambda game_master: True
     ) -> List[List[BranchingStep]]:
         assert isinstance(parent_masters, List), "The context must be a list"
         # For each parent master (leaf node of the interaction) we continue with possibly multiple branches
-        parent_continuations = []
+        all_branching_steps = []
         for parent_master in parent_masters:
             parent_player, parent_context = parent_master.observe()
             # We need to copy the env even with factor=1 (e.g. the teacher) b.c. otherwise we run into problems
@@ -46,10 +46,10 @@ class BranchingPlayer:
                 branch_player, branch_context = branch_master.observe()
                 # todo this fails after first step, why on earth?
                 # todo parent master is wrong? branch should become new parent
-                #if branch_context != parent_context:
+                # if branch_context != parent_context:
                 #    print(parent_context)
                 #    print(branch_context)
-                #assert branch_context == parent_context, "Context for parent and branch should be the same after copy"
+                # assert branch_context == parent_context, "Context for parent and branch should be the same after copy"
                 branch_response_text = branch_player(parent_context)
                 branching_steps.append(
                     BranchingStep(
@@ -60,5 +60,5 @@ class BranchingPlayer:
                         branch_response_text
                     )
                 )
-            parent_continuations.append(branching_steps)
-        return parent_continuations
+            all_branching_steps.append(branching_steps)
+        return all_branching_steps
