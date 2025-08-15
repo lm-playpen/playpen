@@ -5,50 +5,60 @@ from clemcore.clemgame.master import GameMaster, Player
 
 
 @dataclass
-class BranchingResponse:
+class BranchingStep:
     parent_master: "GameMaster"
+    parent_player: Player  # observed in parent
+    parent_context: Dict  # observed in parent
     branch_master: "GameMaster"
-    parent_context: Dict
-    branch_response: str
+    branch_response: str  # advanced in branch
 
-    def step(self):
+    def apply(self):
         return self.branch_master.step(self.branch_response)
 
     def __str__(self):
         return self.branch_response
 
 
-class BranchingPlayer(Callable):
-    """    Applies a player to a given context as many times as determined by the branching factor. """
+class BranchingPlayer:
 
-    def __init__(self,
-                 current_masters: List[GameMaster],
-                 current_players: List[Player],
-                 *,
-                 branching_factor: int = 1,
-                 branching_criteria: Callable[[GameMaster], bool] = None):
-        assert branching_factor > 0, "The branching factor must be greater than zero"
-        self._branching_factor = branching_factor
-        self._do_branch = branching_criteria or (lambda parent_master: True)  # always
-        self._current_masters = current_masters
-        self._current_players = current_players
-
-    def __call__(self, contexts: List[str]) -> List[List[BranchingResponse]]:
-        assert isinstance(contexts, List), "The context for TreePlayer must be a list of game environments"
-        assert len(self._current_masters) == len(contexts), "There must be as many active branches as given contexts"
-        context_responses = []
-        for parent_master, parent_context in zip(self._current_masters, contexts):
-            branch_responses = []
-            branching_factor = self._branching_factor if self._do_branch(parent_master) else 1
-            for _ in range(branching_factor):
-                # We need to copy the env even with factor=1 (for the teacher) b.c. otherwise we run into problems
-                # when adding the response to the tree, since we use the env identity as an id. If we do not copy,
-                # then there will be two nodes with the same env which makes finding them via the env unpredictable.
-                branch_master: GameMaster = deepcopy(parent_master)
-                branch_player = branch_master.current_player  # we use the branch player as it keeps state
-                # this already changes the player state in branch env
+    @staticmethod
+    def branching_response(
+            parent_masters: List[GameMaster],
+            *,
+            branching_factor: int = 1,
+            branching_criteria: Callable = lambda game_master: True
+    ) -> List[List[BranchingStep]]:
+        assert isinstance(parent_masters, List), "The context must be a list"
+        # For each parent master (leaf node of the interaction) we continue with possibly multiple branches
+        parent_continuations = []
+        for parent_master in parent_masters:
+            parent_player, parent_context = parent_master.observe()
+            # We need to copy the env even with factor=1 (e.g. the teacher) b.c. otherwise we run into problems
+            # when adding the response to the tree, since we use the env identity as an id. If we do not copy,
+            # then there will be two nodes with the same env which makes finding them via the env unpredictable.
+            branching_steps = []
+            current_branching_factor = branching_factor if branching_criteria(parent_master) else 1
+            for _ in range(current_branching_factor):  # todo we could use this to give ids like #turn.#branch
+                # We detach the branch state from the parent state.
+                branch_master = deepcopy(parent_master)
+                # We use the branch player to advance its state (in the branch).
+                # The player might generate a different response for each branch.
+                branch_player, branch_context = branch_master.observe()
+                # todo this fails after first step, why on earth?
+                # todo parent master is wrong? branch should become new parent
+                #if branch_context != parent_context:
+                #    print(parent_context)
+                #    print(branch_context)
+                #assert branch_context == parent_context, "Context for parent and branch should be the same after copy"
                 branch_response_text = branch_player(parent_context)
-                branch_response = BranchingResponse(parent_master, branch_master, parent_context, branch_response_text)
-                branch_responses.append(branch_response)
-            context_responses.append(branch_responses)
-        return context_responses
+                branching_steps.append(
+                    BranchingStep(
+                        parent_master,
+                        parent_player,
+                        parent_context,
+                        branch_master,
+                        branch_response_text
+                    )
+                )
+            parent_continuations.append(branching_steps)
+        return parent_continuations

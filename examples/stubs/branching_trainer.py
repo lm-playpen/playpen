@@ -3,7 +3,7 @@ from pathlib import Path
 
 from clemcore.backends import Model
 from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, GameBenchmark, \
-    InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver
+    InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver, GameMaster
 from clemcore.clemgame.runners import sequential
 from playpen import BasePlayPen, to_sub_selector
 from datasets import load_dataset
@@ -16,17 +16,33 @@ from playpen.callbacks.files import EpochResultsFolder, EpochResultsFolderCallba
 
 class BranchingPlayPenTrainer(BasePlayPen):
 
-    def __init__(self, learner: Model):
-        super().__init__(learner)
+    def __init__(self, learner: Model, teacher: Model):
+        """Showcase using the game of Taboo, which requires two players.
+        Therefore, the learner is supposed to be accompanied by a teacher.
+
+        However, in contract to clembench, the roles played by each model are to be decided programmatically.
+        This means that the results folder structure does not necessarily show which model played which role.
+
+        Note:
+            Both models will always be loaded into memory, even if they are the same.
+            This is intentional: While we want to adjust the learner's parameters,
+            the teacher model must remain fixed as part of the environment to allow proper convergence.
+
+        Args:
+            learner: The learner model instance to be trained or adapted.
+            teacher: The teacher model instance that remains fixed and acts as part of the environment.
+        """
+        super().__init__(learner, teacher)
         self.num_epochs = 1
         # We configure necessary parameters for the branching run
-        self.branching_factor = 2
-        self.branching_criteria = self.is_guesser
+        self.branching_factor = 1
+        self.branching_criteria = self.player_is_learner
         # We use the episode buffer that support branching during game play
         self.episode_buffer = BranchingEpisodeBuffer()
+        # For playpen the model results folder does not necessarily indicate the model order as used in the games
+        results_folder = EpochResultsFolder(Path("playpen-branching-records"), [learner, teacher])
+        model_infos = Model.to_infos([learner, teacher])
         # setup callbacks for the clem benchmark run
-        results_folder = EpochResultsFolder(Path("playpen-branching-records"), [learner])
-        model_infos = Model.to_infos([learner])
         self.callbacks = GameBenchmarkCallbackList([
             # a callback to collect episodes into the buffer during the benchmark run
             BranchingEpisodeBufferCallback(self.episode_buffer),
@@ -40,9 +56,9 @@ class BranchingPlayPenTrainer(BasePlayPen):
             # InteractionsFileSaver(results_folder, model_infos)
         ])
 
-    def is_guesser(self, game_master: "GameMaster"):
-        player = game_master.current_player
-        return self.is_learner(player) and player.game_role == "WordGuesser"  # we know this exists for taboo
+    def player_is_learner(self, game_master: GameMaster):
+        player, _ = game_master.observe()
+        return self.is_learner(player)
 
     def learn(self, game_registry: GameRegistry):
         # We use the taboo game to showcase the basic playpen flow
@@ -79,14 +95,22 @@ class BranchingPlayPenTrainer(BasePlayPen):
         sequential.run(
             branching_game_benchmark,
             game_instance_iterator,
-            [self.learner],
+            # Note: Here the order is important! We assign the roles so that:
+            # - the teacher plays as the word describer (player at index 0)
+            # - the learner plays as the word guesser (player at index 1)
+            [self.teacher, self.learner],
             callbacks=self.callbacks,
         )
 
     def _train(self):
         # Convert the collected trajectories into conversational data format
         conversational_dataset = self.episode_buffer.to_conversational_dataset(self.learner)
-        print("Collected episodes:", len(conversational_dataset))
+        print("Collected episodes (perspective=learner):", len(conversational_dataset))
+        print("Example episode:")
+        for conversation in conversational_dataset:
+            for message in conversation["messages"]:
+                print(message)
+            break
         # Apply a training algorithm of your choice
         print("Training...")
         time.sleep(1)
