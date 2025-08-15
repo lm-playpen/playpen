@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "playpen"
-version = "3.3.0" # major version matches clemcore
+version = "3.3.1" # major version matches clemcore
 description = "The Playpen Python package to train LLMs interactively in text-based environments."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -13,7 +13,7 @@ authors = [
     { name = "Philipp Sadler", email = "first.last@uni-potsdam.de" }
 ]
 dependencies = [
-    "clemcore>=3.3.0,<4.0.0",
+    "clemcore>=3.3.1,<4.0.0",
     "datasets~=3.5.1" # to load playpen-data
 ]
 
