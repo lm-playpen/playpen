@@ -3,7 +3,7 @@ from pathlib import Path
 
 from clemcore.backends import Model
 from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, GameBenchmark, \
-    InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver, GameMaster
+    InstanceFileSaver, ExperimentFileSaver
 from clemcore.clemgame.runners import sequential
 from playpen import BasePlayPen, to_sub_selector
 from datasets import load_dataset
@@ -11,7 +11,7 @@ from datasets import load_dataset
 from playpen.branching.master import BranchingGameBenchmark
 from playpen.buffers import BranchingEpisodeBuffer
 from playpen.callbacks.buffers import BranchingEpisodeBufferCallback
-from playpen.callbacks.files import EpochResultsFolder, EpochResultsFolderCallback
+from playpen.callbacks.files import EpochResultsFolder, EpochResultsFolderCallback, BranchingInteractionsFileSaver
 
 
 class BranchingPlayPenTrainer(BasePlayPen):
@@ -36,24 +36,24 @@ class BranchingPlayPenTrainer(BasePlayPen):
         self.num_epochs = 2
         # We configure necessary parameters for the branching run
         self.branching_factor = 2
-        self.branching_criteria = lambda gm: self.is_learner(gm.observe[0]) # current player is learner
+        self.branching_criteria = lambda gm: self.is_learner(gm.observe()[0])  # current player is learner
         # We use the episode buffer that support branching during game play
         self.episode_buffer = BranchingEpisodeBuffer()
         # For playpen the model results folder does not necessarily indicate the model order as used in the games
-        results_folder = EpochResultsFolder(Path("playpen-branching-records"), [learner, teacher])
+        results_folder = EpochResultsFolder(Path("playpen-records-branching"), [learner, teacher])
         model_infos = Model.to_infos([learner, teacher])
         # setup callbacks for the clem benchmark run
         self.callbacks = GameBenchmarkCallbackList([
             # a callback to collect episodes into the buffer during the benchmark run
             BranchingEpisodeBufferCallback(self.episode_buffer),
             # a callback to increase the epoch number in the result folder
-            # EpochResultsFolderCallback(results_folder),
+            EpochResultsFolderCallback(results_folder),
             # a callback to save the instance.json using the epoch result folder structure
-            # InstanceFileSaver(results_folder),
+            InstanceFileSaver(results_folder),
             # a callback to save the experiment.json using the epoch result folder structure
-            # ExperimentFileSaver(results_folder, model_infos),
-            # a callback to save the interactions.json and requests.json using the epoch result folder structure
-            # InteractionsFileSaver(results_folder, model_infos)
+            ExperimentFileSaver(results_folder, model_infos),
+            # a callback to save the interactions.json and requests.json for a specific branch of the conversation
+            BranchingInteractionsFileSaver(results_folder, model_infos)
         ])
 
     def learn(self, game_registry: GameRegistry):
@@ -101,6 +101,15 @@ class BranchingPlayPenTrainer(BasePlayPen):
     def _train(self):
         # Convert the collected trajectories into conversational data format
         conversational_dataset = self.episode_buffer.to_conversational_dataset(self.learner)
+        # Given a branching factor 2 and the criteria to branch only for the learner,
+        # the resulting number of conversations should be 384, that is,
+        # 8 branches for each of the 48 training episodes. Why 8 branches?
+        # The mock player always play an episode to the end, so the guesser has always 3 turns.
+        # At each of these turns all existing conversations branch:
+        # - at first turn there are then 1*2=2 conversations,
+        # - at the second turn there are then 2*2=4 conversations,
+        # - and at the third turn there are then 4*2=8 conversations,
+        # finally leading to 2^3=8 branches.
         print("Collected episodes (perspective=learner):", len(conversational_dataset))
         print("Example episode:")
         for conversation in conversational_dataset:
