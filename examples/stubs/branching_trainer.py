@@ -33,10 +33,10 @@ class BranchingPlayPenTrainer(BasePlayPen):
             teacher: The teacher model instance that remains fixed and acts as part of the environment.
         """
         super().__init__(learner, teacher)
-        self.num_epochs = 1
+        self.num_epochs = 2
         # We configure necessary parameters for the branching run
-        self.branching_factor = 1
-        self.branching_criteria = self.player_is_learner
+        self.branching_factor = 2
+        self.branching_criteria = lambda gm: self.is_learner(gm.observe[0]) # current player is learner
         # We use the episode buffer that support branching during game play
         self.episode_buffer = BranchingEpisodeBuffer()
         # For playpen the model results folder does not necessarily indicate the model order as used in the games
@@ -55,10 +55,6 @@ class BranchingPlayPenTrainer(BasePlayPen):
             # a callback to save the interactions.json and requests.json using the epoch result folder structure
             # InteractionsFileSaver(results_folder, model_infos)
         ])
-
-    def player_is_learner(self, game_master: GameMaster):
-        player, _ = game_master.observe()
-        return self.is_learner(player)
 
     def learn(self, game_registry: GameRegistry):
         # We use the taboo game to showcase the basic playpen flow
