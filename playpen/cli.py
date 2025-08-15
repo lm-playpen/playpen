@@ -15,7 +15,11 @@ from playpen import BasePlayPen, to_sub_selector
 
 def train(file_path: str, learner: ModelSpec, teacher: ModelSpec, temperature: float, max_tokens: int):
     def is_playpen(obj):
-        return inspect.isclass(obj) and issubclass(obj, BasePlayPen) and obj is not BasePlayPen
+        return (inspect.isclass(obj)
+                and issubclass(obj, BasePlayPen)
+                and obj is not BasePlayPen
+                and obj.__module__ == module.__name__  # defined in this file
+                )
 
     try:
         file_name = os.path.splitext(file_path)[0]
