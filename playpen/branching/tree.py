@@ -1,6 +1,6 @@
 from typing import List, Set, Dict
 
-from clemcore.clemgame.master import GameMaster
+from clemcore.clemgame import GameMaster, Player
 
 
 class GameTreeNode:
@@ -57,8 +57,9 @@ class GameTreeNode:
 
 class ResponseTreeNode(GameTreeNode):
 
-    def __init__(self, game_master: GameMaster, context: Dict, response: str, done: bool, info: Dict):
+    def __init__(self, game_master: GameMaster, player: Player, context: Dict, response: str, done: bool, info: Dict):
         super().__init__(game_master)
+        self.player = player
         self.context = context
         self.response = response
         self.done = done

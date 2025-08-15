@@ -96,8 +96,7 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
     def to_conversational_dataset(self, perspective: Model) -> Dataset:
         def recursive_add_to(_messages: List[Dict], node: ResponseTreeNode):
             # only collect for given conversational perspective
-            player_model = node.unwrap().current_player.model
-            if perspective is player_model:
+            if perspective is node.player.model:
                 # we reverse later
                 _messages.append(dict(role="assistant", content=node.response))
                 _messages.append(node.context)

@@ -1,11 +1,12 @@
 import os
 from copy import copy
+from functools import partial
 from typing import List, Dict, Callable, Tuple
 
-from clemcore.clemgame import GameBenchmark, GameMaster, Player
+from clemcore.clemgame import GameBenchmark, GameMaster
 from clemcore.backends import Model
 
-from playpen.branching.player import BranchingResponse, BranchingPlayer
+from playpen.branching.player import BranchingStep, BranchingPlayer
 from playpen.branching.tree import GameTree, ResponseTreeNode, GameTreeNode
 
 
@@ -65,7 +66,7 @@ class BranchingGameMaster(GameMaster):
         self._root: GameMaster = game_master
         self._done: bool = False
         self._game_tree = GameTree(GameTreeNode(self._root))
-        self._active_masters: List[GameMaster] = [self._root]
+        self._active_parent_masters: List[GameMaster] = [self._root]
         self._branching_factor: int = branching_factor
         self._branching_criteria = branching_criteria
 
@@ -75,49 +76,41 @@ class BranchingGameMaster(GameMaster):
     def has_started(self) -> bool:
         return self._root.has_started()
 
-    def observe(self) -> Tuple[BranchingPlayer, List[Dict]]:
-        contexts: List[Dict] = []
-        players: List[Player] = []
-        for game_master in self._active_masters:
-            player, context = game_master.observe()
-            players.append(player)
-            contexts.append(context)
-        # BranchingPlayer assumes that (parent_master, parent_context) can be re-assembled by zipping (using the order)
-        branching_player = BranchingPlayer(
-            self._active_masters,
-            players,
-            branching_factor=self._branching_factor,
-            branching_criteria=self._branching_criteria
-        )
-        return branching_player, contexts
+    def observe(self) -> Tuple[Callable, List[GameMaster]]:
+        # For simplicity, we use the active game masters as the context for branching
+        return (partial(BranchingPlayer.branching_response,
+                        branching_factor=self._branching_factor,
+                        branching_criteria=self._branching_criteria),
+                self._active_parent_masters)
 
-    def step(self, responses: List[List[BranchingResponse]]) -> Tuple[bool, List[List[Dict]]]:
-        assert isinstance(responses, list), f"GameTreeEnv expects a list of responses and not {responses.__class__}"
+    def step(self, parent_continuations: List[List[BranchingStep]]) -> Tuple[bool, List[List[Dict]]]:
+        assert isinstance(parent_continuations, list), \
+            f"Step expects a list of lists of responses and not {parent_continuations.__class__}"
 
-        context_infos = []
+        all_infos = []
         candidates: List[BranchingCandidate] = []  # called candidates because we considered to apply a pruning function
-        for context_responses in responses:
-            response_infos = []
-            for response in context_responses:  # each response represents a possible branch in the tree
-                done, info = response.step()
+        for branching_steps in parent_continuations:
+            infos = []
+            for branching_step in branching_steps:  # each response represents a possible branch in the tree
+                done, info = branching_step.apply()
                 info["done"] = done  # store done in info, because runners only handle single bool return value
-                response_infos.append(info)
-                candidate = BranchingCandidate(response, done, info)
+                infos.append(info)
+                candidate = BranchingCandidate(branching_step, done, info)
                 candidates.append(candidate)
-            context_infos.append(response_infos)
+            all_infos.append(infos)
 
         self._done = all([candidate.done for candidate in candidates])
 
-        self._active_masters = []  # memorize active leaves so that we do not have to find them again
+        self._active_parent_masters = []  # memorize active leaves so that we do not have to find them again
         for candidate in candidates:
             candidate.add_branch_to(self._game_tree)
-            self._active_masters.append(candidate.response.branch_master)
+            self._active_parent_masters.append(candidate.response.branch_master)
 
         # return all dones and infos so that they match the quantity of the responses
-        return self._done, context_infos
+        return self._done, all_infos
 
     def store_records(self, top_dir: str, rollout_dir: str, episode_dir: str):
-        for branch_idx, game_master in enumerate(self._active_masters):
+        for branch_idx, game_master in enumerate(self._active_parent_masters):
             game_master.store_records(top_dir, rollout_dir, os.path.join(episode_dir, f"branch_{branch_idx}"))
 
     def get_active_tree(self) -> "GameTree":
@@ -125,7 +118,7 @@ class BranchingGameMaster(GameMaster):
         leaves = self._game_tree.find_leaves()
         active_leaves = []
         for leave in leaves:
-            if leave.unwrap() in self._active_masters:
+            if leave.unwrap() in self._active_parent_masters:
                 active_leaves.append(leave)
 
         def label_active_recursive(active_node):
@@ -152,7 +145,7 @@ class BranchingGameMaster(GameMaster):
 
 class BranchingCandidate:
 
-    def __init__(self, response: BranchingResponse, done: bool, info: Dict):
+    def __init__(self, response: BranchingStep, done: bool, info: Dict):
         self.response = response
         self.done = done
         self.info = info
@@ -161,8 +154,12 @@ class BranchingCandidate:
         """ Find parent node and add child"""
         parent_node = game_tree.find_node(self.response.parent_master)
         assert parent_node is not None, "There must be a parent node that wraps the candidates parent env"
-        branch_node = ResponseTreeNode(self.response.branch_master,
-                                       self.response.parent_context,
-                                       self.response.branch_response,
-                                       self.done, self.info)
+        branch_node = ResponseTreeNode(
+            self.response.branch_master,  # the branched master (however, after step the current_player is wrong!)
+            self.response.parent_player,  # the player creating the response
+            self.response.parent_context,  # the context given to that player
+            self.response.branch_response,  # one possible response given by that player
+            self.done,
+            self.info
+        )
         parent_node.connect_to(branch_node)
