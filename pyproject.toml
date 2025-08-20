@@ -19,7 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 trl = [
-    "accelerate==1.2.1", # fix version for clemcore[huggingface] compatibility
+    "accelerate==1.4.0", # might deviate from clemcore[huggingface] version
     "transformers==4.55.2", # fix version for clemcore[huggingface] compatibility
     "trl==0.21.0", # accelerate>=1.4.0 transformers>=4.55.0 dataset>=3.0.0
     "peft==0.17.0" # supports LoRA for most MoE model including LLama4 family
