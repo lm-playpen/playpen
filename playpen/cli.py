@@ -95,15 +95,15 @@ def get_default_results_dir():
 
 def evaluate_suite(suite: str, model_spec: ModelSpec, gen_args: Dict, results_dir: Path, game_selector: str,
                    dataset_name: str):
-    suite_results_dir = str(results_dir / suite)
+    suite_results_dir = results_dir / suite
     if dataset_name is not None:
         from datasets import load_dataset
         dataset = load_dataset("colab-potsdam/playpen-data", dataset_name, split="validation")
         clem.run(game_selector, [model_spec],
-                 gen_args=gen_args, results_dir=suite_results_dir, sub_selector=to_sub_selector(dataset))
-    clem.score(game_selector, suite_results_dir)
-    clem.transcripts(game_selector, suite_results_dir)
-    df = clem.clemeval.perform_evaluation(suite_results_dir, return_dataframe=True)
+                 gen_args=gen_args, results_dir_path=suite_results_dir, sub_selector=to_sub_selector(dataset))
+    clem.score(game_selector, str(suite_results_dir))
+    clem.transcripts(game_selector, str(suite_results_dir))
+    df = clem.clemeval.perform_evaluation(str(suite_results_dir), return_dataframe=True)
     clem_score = df["-, clemscore"][0]
     return clem_score
 
@@ -152,7 +152,8 @@ def main():
     list_parser = sub_parsers.add_parser("list")
     list_parser.add_argument("mode", choices=["games", "models", "backends"],
                              default="games", nargs="?", type=str,
-                             help="Choose to list available games, models or backends. Default: games")
+                             help="Choose to list available games, models or backends."
+                                  " Default: games")
     list_parser.add_argument("-v", "--verbose", action="store_true")
     list_parser.add_argument("-s", "--selector", type=str, default="all")
 
@@ -162,8 +163,9 @@ def main():
     train_parser.add_argument("-l", "--learner", type=str,
                               help="The model name of the learner model (as listed by 'playpen list models').")
     train_parser.add_argument("-t", "--teacher", type=str, default=None,
-                              help="The model name of the partner model (as listed by 'playpen list models')."
-                                   "Optional, since non-interactive methods (like SFT) may not require a teacher model.",
+                              help="(Optional) Model name of the partner model (as listed by 'playpen list models')."
+                                   " Note: Non-interactive methods (like SFT) may not require a teacher model."
+                                   " Default: None.",
                               required=False)
     train_parser.add_argument("-T", "--temperature", type=float, required=False, default=0.0,
                               help="The temperature used for generation. Should be the same as during training. "
@@ -179,22 +181,26 @@ def main():
                              help="The model name of the model to be evaluated (as listed by 'playpen list models').")
     eval_parser.add_argument("--suite", choices=["clem", "static", "all"], default="all",
                              nargs="?", type=str,
-                             help="Choose which eval suites to run. Default: all")
+                             help="(Optional) Suite selector for the eval run."
+                                  " Default: all")
     eval_parser.add_argument("-g", "--game", type=str,
-                             help="A game selector e.g. a game name or a GameSpec-like JSON object given as a string.")
+                             help="(Optional) Game selector, such as a game name or a GameSpec JSON string."
+                                  " Default: {\"benchmark\": [\"2.0\"]} (clem suite)"
+                                  " or {\"benchmark\": [\"static_1.0\"]} (static suite)")
     eval_parser.add_argument("-r", "--results_dir", type=Path, default=get_default_results_dir(),
-                             help="A relative or absolute path to a playpen-eval results directory. "
-                                  "This is expected to be one level above 'clem' or 'static' results."
-                                  "Default: playpen-eval/<timestamp>.")
+                             help="(Optional) Relative or absolute path to a playpen-eval results directory."
+                                  " This is expected to be one level above 'clem' or 'static' results."
+                                  " Default: playpen-eval/<timestamp>.")
     eval_parser.add_argument("--skip_gameplay", action="store_true",
-                             help="Flag to skip gameplay and only calculate the clemscore for a given 'results_dir'."
-                                  "Default: False. Only relevant for 'clem'.")
+                             help="(Optional) Flag only re-calculate the clemscore for a given 'results_dir'."
+                                  " Using this option skips gameplay. Only relevant for the clem suite."
+                                  " Default: False.")
     eval_parser.add_argument("-T", "--temperature", type=float, default=0.0,
-                             help="The temperature used for generation. Should be the same as during training. "
-                                  "Default: 0.0.")
+                             help="The temperature used for generation. Should be the same as during training."
+                                  " Default: 0.0.")
     eval_parser.add_argument("-L", "--max_tokens", type=int, default=300,
-                             help="The token limit for generated responses. Should be the same as during training. "
-                                  "Default: 300.")
+                             help="The token limit for generated responses. Should be the same as during training."
+                                  " Default: 300.")
 
     # todo: add a 'playpen play' option to allow collection of new interaction data on the train split
 
