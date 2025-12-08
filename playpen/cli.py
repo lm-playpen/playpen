@@ -42,7 +42,7 @@ def train(file_path: str, learner: ModelSpec, teacher: ModelSpec, temperature: f
 
     model_specs = [learner_spec]
     if teacher is not None:
-        teacher_spec = model_registry.get_first_model_spec_that_unify_with(learner)
+        teacher_spec = model_registry.get_first_model_spec_that_unify_with(teacher)
         print(f"Found registered model spec that unifies with {teacher.to_string()} -> {teacher_spec}")
         model_specs.append(teacher_spec)
 
