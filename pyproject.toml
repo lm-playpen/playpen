@@ -14,7 +14,8 @@ authors = [
 ]
 dependencies = [
     "clemcore>=3.3.2,<4.0.0",
-    "datasets~=3.5.1" # to load playpen-data
+    "datasets~=3.5.1", # to load playpen-data
+    "openenv-core~=0.1.1" # to use playpen openenv container
 ]
 
 [project.optional-dependencies]
