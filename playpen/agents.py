@@ -1,6 +1,8 @@
 import abc
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TypeVar, Generic, Any, Optional
+from typing_extensions import TypedDict, NotRequired
 
 AgentObservation = TypeVar("AgentObservation")
 AgentResponse = TypeVar("AgentResponse")
@@ -14,13 +16,13 @@ class BaseAgent(abc.ABC, Generic[AgentObservation, AgentResponse]):
     an observation from an environment and returns a response or action.
     """
 
-    def __call__(self, observation: Any) -> AgentResponse:
+    def __call__(self, observation: Any, *, memorize: bool = True) -> AgentResponse:
         """
         Calls the act method. Allows the agent to be used as a callable.
 
         Args:
             observation: The current state or observation from the environment.
-
+            memorize: A flag indicating whether the observation should be stored in the agent's memory.
         Returns:
             The agent's calculated response or action.
         """
@@ -46,6 +48,12 @@ class BaseAgent(abc.ABC, Generic[AgentObservation, AgentResponse]):
         pass
 
 
+class MessageDict(TypedDict):
+    role: str
+    content: str
+    image: NotRequired[Any]
+
+
 @dataclass(frozen=True)
 class ClemObservation:
     """
@@ -66,6 +74,16 @@ class ClemObservation:
     content: str
     image: Optional[Any] = None
 
+    @cached_property
+    def as_message(self) -> MessageDict:
+        """
+        Converts the observation into the exact dictionary format expected by OpenAI/LLM chat completion APIs.
+        """
+        message: MessageDict = {"role": self.role, "content": self.content}
+        if self.image:
+            message["image"] = self.image
+        return message
+
 
 class ClemAgent(BaseAgent[ClemObservation, str], abc.ABC):
     """
@@ -85,14 +103,50 @@ class ClemAgent(BaseAgent[ClemObservation, str], abc.ABC):
     and return a string response appropriate for the Clem game.
     """
 
-    def __call__(self, observation: dict[str, Any]) -> str:
-        """
-        Convert a raw observation into a `ClemObservation` and delegate to `act`.
+    def __init__(self, *, system_prompt: Optional[str] = None):
+        self.system_prompt = system_prompt
+        self.observations: list[ClemObservation] = []
 
-        The input dictionary is expected to contain at least the keys
+    def reset(self):
+        self.observations.clear()
+
+    @property
+    def history(self) -> list[dict]:
+        """
+        Returns the conversation history as a list of message dictionaries.
+
+        Complexity is O(N) where N is a history length, but since individual
+        messages are cached, this is just a list of pointer lookups.
+        """
+        messages: list[MessageDict] = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.extend(obs.as_message for obs in self.observations)
+        return messages  # TypedDict is a dict
+
+    def observe(self, observation: dict[str, Any], *, memorize: bool = True) -> ClemObservation:
+        """
+        :param observation: The input dictionary expected to contain at least the keys
         ``"role"`` and ``"content"``. If present, the value under the
         ``"image"`` key is passed through; all keys (including extras) are
         preserved in the ``raw`` field.
+        :param memorize:
+        :return:
+        """
+        assert isinstance(observation, dict), "Observation for ClemAgents must be a dictionary"
+        clem_observation = ClemObservation(
+            raw=observation,
+            role=observation["role"],
+            content=observation["content"],
+            image=observation.get("image")
+        )
+        if memorize:
+            self.observations.append(clem_observation)
+        return clem_observation
+
+    def __call__(self, observation: dict[str, Any], *, memorize: bool = True) -> str:
+        """
+        Convert a raw observation into a `ClemObservation` and delegate to `act`.
 
         Args:
             observation: Raw observation which is expected to be a dictionary.
@@ -103,11 +157,24 @@ class ClemAgent(BaseAgent[ClemObservation, str], abc.ABC):
             KeyError: If required keys such as ``"role"`` or ``"content"``
                 are missing from the input dictionary.
         """
-        assert isinstance(observation, dict), "Observation for ClemAgents must be a dictionary"
-        clem_observation = ClemObservation(
-            raw=observation,
-            role=observation["role"],
-            content=observation["content"],
-            image=observation.get("image")
-        )
-        return self.act(clem_observation)
+        return self.act(self.observe(observation, memorize=memorize))
+
+    @abc.abstractmethod
+    def act(self, last: AgentObservation) -> AgentResponse:
+        """
+        Implement the main logic for the clem agent decision-making process.
+
+        * Use 'last' to access the immediate prompt/content.
+        * Use 'self.observations' for the full conversation history.
+
+        Note:
+            The last observation has been observed and, if memorized,
+            is already the final element in `self.observations`
+
+        Args:
+            last: The current observation from the environment.
+
+        Returns:
+            The agent's calculated response or action.
+        """
+        pass
