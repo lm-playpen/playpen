@@ -114,6 +114,7 @@ class ClemAgent(BaseAgent[ClemObservation, str], abc.ABC):
     def history(self) -> list[dict]:
         """
         Returns the conversation history as a list of message dictionaries.
+        This includes the system prompt at the first index if present.
 
         Complexity is O(N) where N is a history length, but since individual
         messages are cached, this is just a list of pointer lookups.
