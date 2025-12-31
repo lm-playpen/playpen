@@ -1,51 +1,10 @@
 import abc
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TypeVar, Generic, Any, Optional
+from typing import Any, Optional
 from typing_extensions import TypedDict, NotRequired
 
-AgentObservation = TypeVar("AgentObservation")
-AgentResponse = TypeVar("AgentResponse")
-
-
-class BaseAgent(abc.ABC, Generic[AgentObservation, AgentResponse]):
-    """
-    Abstract base class for all agents.
-
-    This class defines the standard interface for an agent that receives
-    an observation from an environment and returns a response or action.
-    """
-
-    def __call__(self, observation: Any, *, memorize: bool = True) -> AgentResponse:
-        """
-        Calls the act method. Allows the agent to be used as a callable.
-
-        Args:
-            observation: The current state or observation from the environment.
-            memorize: A flag indicating whether the observation should be stored in the agent's memory.
-        Returns:
-            The agent's calculated response or action.
-        """
-        return self.act(observation)
-
-    @abc.abstractmethod
-    def act(self, observation: AgentObservation) -> AgentResponse:
-        """
-        Main logic for the agent's decision-making process.
-
-        Args:
-            observation: The current state or observation from the environment.
-
-        Returns:
-            The agent's calculated response or action.
-        """
-        pass
-
-    def reset(self):
-        """ Asks the agent to resets any internal state.
-
-        Usually called at the end of and episode. """
-        pass
+from playpen.agents.base import BaseAgent
 
 
 class MessageDict(TypedDict):
@@ -161,7 +120,7 @@ class ClemAgent(BaseAgent[ClemObservation, str], abc.ABC):
         return self.act(self.observe(observation, memorize=memorize))
 
     @abc.abstractmethod
-    def act(self, last: AgentObservation) -> AgentResponse:
+    def act(self, last: ClemObservation) -> str:
         """
         Implement the main logic for the clem agent decision-making process.
 
