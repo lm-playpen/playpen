@@ -5,6 +5,7 @@ venv
 *.log
 clembench
 clembench-runs
+openenv-records*/
 playpen-records*/
 playpen-eval/
 results
@@ -15,4 +16,6 @@ results
 game_registry.json
 models
 key.json
+model_registry.json
 trainer*.py
+CLAUDE.md
