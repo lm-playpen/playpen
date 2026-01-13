@@ -13,9 +13,7 @@ authors = [
     { name = "Philipp Sadler", email = "first.last@uni-potsdam.de" }
 ]
 dependencies = [
-    "clemcore>=3.3.2,<4.0.0",
-    "datasets~=3.5.1", # to load playpen-data
-    "openenv-core~=0.1.1" # to use playpen openenv container
+    "clemcore>=3.4.0,<4.0.0"
 ]
 
 [project.optional-dependencies]
