@@ -5,6 +5,7 @@ venv
 *.log
 clembench
 clembench-runs
+openenv-records*/
 playpen-records*/
 playpen-eval/
 results
