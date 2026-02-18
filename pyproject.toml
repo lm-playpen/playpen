@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "playpen"
-version = "3.3.2" # matches required clemcore version
+version = "3.4.2" # matches required clemcore version
 description = "The Playpen Python package to train LLMs interactively in text-based environments."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -13,15 +13,13 @@ authors = [
     { name = "Philipp Sadler", email = "first.last@uni-potsdam.de" }
 ]
 dependencies = [
-    "clemcore>=3.4.0,<4.0.0"
+    "clemcore>=3.4.2,<4.0.0"
 ]
 
 [project.optional-dependencies]
 trl = [
-    "accelerate==1.4.0", # might deviate from clemcore[huggingface] version
-    "transformers==4.55.2", # fix version for clemcore[huggingface] compatibility
-    "trl==0.21.0", # accelerate>=1.4.0 transformers>=4.55.0 dataset>=3.0.0
-    "peft==0.17.0" # supports LoRA for most MoE model including LLama4 family
+    "peft>=0.17.0,<1.0.0", # supports LoRA for most MoE model including LLama4 family; same as clemcore
+    "trl>=0.28.0,<1.0.0"
 ]
 
 [project.scripts]
