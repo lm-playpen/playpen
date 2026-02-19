@@ -1,3 +1,4 @@
+*.ipynb_checkpoints
 build
 .idea
 venv
