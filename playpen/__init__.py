@@ -14,7 +14,7 @@ import os
 if os.getenv("PLAYPEN_DISABLE_BANNER", "0") not in ("1", "true", "yes", "on"):
     print(BANNER)
 
-from typing import List, Callable
+from typing import Callable
 
 from playpen.callbacks.buffers import EpisodeBufferCallback, BranchingEpisodeBufferCallback
 from playpen.buffers import EpisodeBuffer, BranchingEpisodeBuffer
@@ -26,14 +26,19 @@ __all__ = [
     "BranchingEpisodeBuffer",
     "BranchingEpisodeBufferCallback",
     "BasePlayPen",
-    "to_sub_selector"
+    "to_instances_filter"
 ]
 
 
-def to_sub_selector(dataset) -> Callable[[str, str], List[int]]:
-    import collections
-    tasks_by_group = collections.defaultdict(list)
-    for row in dataset:  # a list of rows with game, experiment, task_id columns
-        key = (row['game'], row['experiment'])
-        tasks_by_group[key].append(int(row['task_id']))
-    return lambda game, experiment: tasks_by_group[(game, experiment)]
+def to_instances_filter(dataset) -> Callable[[dict], bool]:
+    """ Converts the given dataset into a filter condition for use with GameInstances.filter(). """
+
+    def dataset_identifier(row: dict) -> tuple[str, str, int]:
+        return row["game"], row["experiment"], int(row["task_id"])
+
+    whitelist = set(dataset_identifier(row) for row in dataset)
+
+    def instance_identifier(row: dict) -> tuple[str, str, int]:
+        return row["game_name"], row["experiment"]["name"], int(row["game_instance"]["game_id"])
+
+    return lambda row: instance_identifier(row) in whitelist

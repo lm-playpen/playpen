@@ -10,7 +10,7 @@ from datetime import datetime
 import clemcore.cli as clem
 from clemcore.backends import ModelSpec, ModelRegistry, BackendRegistry
 from clemcore.clemgame import GameRegistry, GameSpec
-from playpen import BasePlayPen, to_sub_selector
+from playpen import BasePlayPen, to_instances_filter
 
 
 def train(file_path: str, learner: ModelSpec, teacher: ModelSpec, temperature: float, max_tokens: int):
@@ -100,7 +100,7 @@ def evaluate_suite(suite: str, model_spec: ModelSpec, gen_args: Dict, results_di
         from datasets import load_dataset
         dataset = load_dataset("colab-potsdam/playpen-data", dataset_name, split="validation")
         clem.run(game_selector, [model_spec],
-                 gen_args=gen_args, results_dir_path=suite_results_dir, sub_selector=to_sub_selector(dataset))
+                 gen_args=gen_args, results_dir_path=suite_results_dir, instances_filter=to_instances_filter(dataset))
     clem.score(game_selector, str(suite_results_dir))
     clem.transcripts(game_selector, str(suite_results_dir))
     df = clem.clemeval.perform_evaluation(str(suite_results_dir), return_dataframe=True)
