@@ -20,7 +20,7 @@ class DPOPlayPenTrainer(BranchingPlayPenTrainer):
     def __init__(self, learner: Model, teacher: Model):
         super().__init__(learner, teacher)
         # If necessary, customize values defined in the starter
-        self.num_epochs = 2
+        self.num_epochs = 1
         self.branching_factor = 2
         self.branching_criteria = branching.is_player_model(self.learner)
         self.teacher_role = "Player 1"  # teacher is describer
@@ -40,18 +40,17 @@ class DPOPlayPenTrainer(BranchingPlayPenTrainer):
         preference_dataset = self.episode_buffer.to_preference_dataset(player_name, require_different_scores=False)
         print(f"Collected preference samples (perspective={player_name}):", len(preference_dataset))
         print("Example preference sample:")
-        for preference_example in preference_dataset[:1]:
-            print(preference_example["prompt"])
-            print(preference_example["chosen"])
-            print(preference_example["rejected"])
-            break
+        preference_example = preference_dataset[0]
+        print(preference_example["prompt"])
+        print(preference_example["chosen"])
+        print(preference_example["rejected"])
         print()
 
     def _train(self):
         # Convert the collected trajectories into conversational data format
         # Given a branching factor 2 and the criteria to branch only for the learner,
-        # the resulting number of conversations should be 384, that is,
-        # 8 branches for each of the 48 training episodes. Why 8 branches?
+        # the resulting number of conversations should be 432, that is,
+        # 8 branches for each of the 54 training episodes. Why 8 branches?
         # The mock player always play an episode to the end, so the guesser has always 3 turns.
         # At each of these turns all existing conversations branch:
         # - at first turn there are then 1*2=2 conversations,

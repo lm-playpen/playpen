@@ -33,7 +33,7 @@ class BranchingPlayPenTrainer(BasePlayPen):
         super().__init__(learner, teacher)
         self.num_epochs = 2
         self.branching_factor = 2
-        self.branching_criteria = branching.is_player_model(self.learner)
+        self.branching_condition = branching.is_player_model(self.learner)
         self.episode_buffer = BranchingEpisodeBuffer()
         # setup callbacks for the clem benchmark run
         results_folder = EpochResultsFolder(Path("playpen-records-branching"), Model.to_identifier([learner, teacher]))
@@ -87,6 +87,8 @@ class BranchingPlayPenTrainer(BasePlayPen):
             # - the learner plays as the word guesser (player at index 1)
             [self.teacher, self.learner],
             callbacks=self.callbacks,
+            branching_factor=self.branching_factor,
+            branching_condition=self.branching_condition
         )
 
     def _train(self):
