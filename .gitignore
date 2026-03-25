@@ -1,3 +1,4 @@
+*.ipynb_checkpoints
 build
 .idea
 venv
@@ -19,3 +20,4 @@ key.json
 model_registry.json
 trainer*.py
 CLAUDE.md
+.aider*

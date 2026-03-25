@@ -2,16 +2,14 @@ import time
 from pathlib import Path
 
 from clemcore.backends import Model
-from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, GameBenchmark, \
-    InstanceFileSaver, ExperimentFileSaver
-from clemcore.clemgame.runners import sequential
-from playpen import BasePlayPen, to_sub_selector
+from clemcore.clemgame import GameRegistry, GameInstances, GameBenchmarkCallbackList, GameBenchmark, \
+    InstanceFileSaver, ExperimentFileSaver, EpochResultsFolder, EpochResultsFolderCallback, InteractionsFileSaver
+from clemcore.clemgame.runners import branching
+from playpen import BasePlayPen, to_instances_filter
 from datasets import load_dataset
 
-from playpen.branching.master import BranchingGameBenchmark
 from playpen.buffers import BranchingEpisodeBuffer
 from playpen.callbacks.buffers import BranchingEpisodeBufferCallback
-from playpen.callbacks.files import EpochResultsFolder, EpochResultsFolderCallback, BranchingInteractionsFileSaver
 
 
 class BranchingPlayPenTrainer(BasePlayPen):
@@ -34,15 +32,12 @@ class BranchingPlayPenTrainer(BasePlayPen):
         """
         super().__init__(learner, teacher)
         self.num_epochs = 2
-        # We configure necessary parameters for the branching run
         self.branching_factor = 2
-        self.branching_criteria = lambda gm: self.is_learner(gm.observe()[0])  # current player is learner
-        # We use the episode buffer that support branching during game play
+        self.branching_condition = branching.is_player_model(self.learner)
         self.episode_buffer = BranchingEpisodeBuffer()
-        # For playpen the model results folder does not necessarily indicate the model order as used in the games
-        results_folder = EpochResultsFolder(Path("playpen-records-branching"), [learner, teacher])
-        model_infos = Model.to_infos([learner, teacher])
         # setup callbacks for the clem benchmark run
+        results_folder = EpochResultsFolder(Path("playpen-records-branching"), Model.to_identifier([learner, teacher]))
+        model_infos = Model.to_infos([learner, teacher])
         self.callbacks = GameBenchmarkCallbackList([
             # a callback to collect episodes into the buffer during the benchmark run
             BranchingEpisodeBufferCallback(self.episode_buffer),
@@ -51,9 +46,9 @@ class BranchingPlayPenTrainer(BasePlayPen):
             # a callback to save the instance.json using the epoch result folder structure
             InstanceFileSaver(results_folder),
             # a callback to save the experiment.json using the epoch result folder structure
-            ExperimentFileSaver(results_folder, model_infos),
+            ExperimentFileSaver(results_folder, player_model_infos=model_infos),
             # a callback to save the interactions.json and requests.json for a specific branch of the conversation
-            BranchingInteractionsFileSaver(results_folder, model_infos)
+            InteractionsFileSaver(results_folder, player_model_infos=model_infos, store_branches=True)
         ])
 
     def learn(self, game_registry: GameRegistry):
@@ -61,41 +56,39 @@ class BranchingPlayPenTrainer(BasePlayPen):
         game_spec = game_registry.get_game_specs_that_unify_with("taboo")[0]
 
         # We only use the training instances so that we can properly evaluate on the validation set later
-        dataset = load_dataset("colab-potsdam/playpen-data", "instances", split="train")
-        game_instance_iterator = GameInstanceIterator.from_game_spec(game_spec, sub_selector=to_sub_selector(dataset))
+        dataset_train = load_dataset("colab-potsdam/playpen-data", "instances", split="train")
 
         # We initialize the game benchmark which creates the game master for each game instance
         with GameBenchmark.load_from_spec(game_spec) as game_benchmark:
             # We run as many epochs over all game instances as specified
             for epoch in range(self.num_epochs):
                 # We collect the episodes using the batchwise runner from clemcore
-                self._collect_episodes(game_benchmark, game_instance_iterator)
+                self._collect_episodes(game_benchmark, dataset_train)
                 # We use the collected episodes to adjust model parameters of the learner
                 self._train()
 
-    def _collect_episodes(self, game_benchmark, game_instance_iterator):
+    def _collect_episodes(self, game_benchmark, dataset_train):
         # We reset the iterator to play all game instances once again
-        game_instance_iterator.reset(verbose=False)
+        game_instances = GameInstances.from_game_spec(game_benchmark.game_spec)
+        game_instances = game_instances.filter(to_instances_filter(dataset_train))
+
         # We reset the episode buffer before each epoch over game instances
         # Note: We could also collect episodes over multiple epochs by calling reset only later
         self.episode_buffer.reset()
-        # We decorate the game_benchmark with the branching capabilities
-        branching_game_benchmark = BranchingGameBenchmark(
-            game_benchmark,
-            branching_factor=self.branching_factor,
-            branching_criteria=self.branching_criteria
-        )
-        # We invoke the sequential runner to collect the episode trajectories for the game instance,
+
+        # We invoke the branching runner to collect the episode trajectories for the game instance,
         # so that all game instances are played one after the other, but each episode branches at
         # certain points in time. This mode is supported by all models.
-        sequential.run(
-            branching_game_benchmark,
-            game_instance_iterator,
+        branching.run(
+            game_benchmark,
+            game_instances,
             # Note: Here the order is important! We assign the roles so that:
             # - the teacher plays as the word describer (player at index 0)
             # - the learner plays as the word guesser (player at index 1)
             [self.teacher, self.learner],
             callbacks=self.callbacks,
+            branching_factor=self.branching_factor,
+            branching_condition=self.branching_condition
         )
 
     def _train(self):

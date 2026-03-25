@@ -1,28 +1,6 @@
 from playpen.starters.branching_trainer import BranchingPlayPenTrainer
-from playpen.buffers import BranchingEpisodeBuffer
 from clemcore.backends import Model
-from datasets import Dataset
-
-
-class DPOEpisodeBuffer(BranchingEpisodeBuffer):
-
-    def to_preference_dataset(self, perspective: Model, data_format="conversational") -> Dataset:
-        """
-        Transform the branching rollout buffer to a preference dataset for, e.g., DPO learning.
-
-        # Standard format
-        preference_example = {"prompt": "The sky is", "chosen": " blue.", "rejected": " green."}
-
-        # Conversational format
-        preference_example = {"prompt": [{"role": "user", "content": "What color is the sky?"}],
-                              "chosen": [{"role": "assistant", "content": "It is blue."}],
-                              "rejected": [{"role": "assistant", "content": "It is green."}]}
-
-        :param perspective: of a model generating the responses
-        :param data_format: conversational or standard
-        :return: a preference dataset as described in https://huggingface.co/docs/trl/dataset_formats#preference
-        """
-        return Dataset.from_list([])
+from clemcore.clemgame.runners import branching
 
 
 class DPOPlayPenTrainer(BranchingPlayPenTrainer):
@@ -42,37 +20,47 @@ class DPOPlayPenTrainer(BranchingPlayPenTrainer):
     def __init__(self, learner: Model, teacher: Model):
         super().__init__(learner, teacher)
         # If necessary, customize values defined in the starter
-        self.num_epochs = 2
+        self.num_epochs = 1
         self.branching_factor = 2
-        self.branching_criteria = lambda gm: self.is_learner(gm.observe()[0])  # current player is learner
+        self.branching_criteria = branching.is_player_model(self.learner)
+        self.teacher_role = "Player 1"  # teacher is describer
+        self.learner_role = "Player 2"  # learner is guesser
 
-    def _train(self):
-        # Convert the collected trajectories into conversational data format
-        conversational_dataset = self.episode_buffer.to_conversational_dataset(self.learner)
-        # Given a branching factor 2 and the criteria to branch only for the learner,
-        # the resulting number of conversations should be 384, that is,
-        # 8 branches for each of the 48 training episodes. Why 8 branches?
-        # The mock player always play an episode to the end, so the guesser has always 3 turns.
-        # At each of these turns all existing conversations branch:
-        # - at first turn there are then 1*2=2 conversations,
-        # - at the second turn there are then 2*2=4 conversations,
-        # - and at the third turn there are then 4*2=8 conversations,
-        # finally leading to 2^3=8 branches.
-        print("Collected episodes (perspective=learner):", len(conversational_dataset))
+    def _print_example_conversation(self, player_name: str):
+        conversational_dataset = self.episode_buffer.to_conversational_dataset(player_name)
+        print(f"Collected episodes (perspective={player_name}):", len(conversational_dataset))
         print("Example episode:")
         for conversation in conversational_dataset:
             for message in conversation["messages"]:
                 print(message)
             break
         print()
-        # Turn the collected interactions into a preference dataset
-        preference_dataset = self.episode_buffer.to_preference_dataset(self.learner)
-        print("Collected preference samples (perspective=learner):", len(preference_dataset))
+
+    def _print_example_preferences(self, player_name: str):
+        preference_dataset = self.episode_buffer.to_preference_dataset(player_name, require_different_scores=False)
+        print(f"Collected preference samples (perspective={player_name}):", len(preference_dataset))
         print("Example preference sample:")
-        for preference_example in preference_dataset:
-            print(preference_example["prompt"])
-            print(preference_example["chosen"])
-            print(preference_example["rejected"])
-            break
+        preference_example = preference_dataset[0]
+        print(preference_example["prompt"])
+        print(preference_example["chosen"])
+        print(preference_example["rejected"])
+        print()
+
+    def _train(self):
+        # Convert the collected trajectories into conversational data format
+        # Given a branching factor 2 and the criteria to branch only for the learner,
+        # the resulting number of conversations should be 432, that is,
+        # 8 branches for each of the 54 training episodes. Why 8 branches?
+        # The mock player always play an episode to the end, so the guesser has always 3 turns.
+        # At each of these turns all existing conversations branch:
+        # - at first turn there are then 1*2=2 conversations,
+        # - at the second turn there are then 2*2=4 conversations,
+        # - and at the third turn there are then 4*2=8 conversations,
+        # finally leading to 2^3=8 branches.
+        self._print_example_conversation(self.learner_role)
+        self._print_example_conversation(self.teacher_role)
+        # Turn the collected interactions into a preference dataset
+        self._print_example_preferences(self.learner_role)
+        self._print_example_preferences(self.teacher_role)
         # Apply a training algorithm of your choice
         print("Training...")

@@ -2,15 +2,14 @@ import time
 from pathlib import Path
 
 from clemcore.backends import Model
-from clemcore.clemgame import GameRegistry, GameInstanceIterator, GameBenchmarkCallbackList, GameBenchmark, \
-    InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver
+from clemcore.clemgame import GameRegistry, GameInstances, GameBenchmarkCallbackList, GameBenchmark, \
+    InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver, EpochResultsFolder, EpochResultsFolderCallback
 from clemcore.clemgame.runners import batchwise
-from playpen import BasePlayPen, to_sub_selector
+from playpen import BasePlayPen, to_instances_filter
 from datasets import load_dataset
 
 from playpen.buffers import EpisodeBuffer
 from playpen.callbacks.buffers import EpisodeBufferCallback
-from playpen.callbacks.files import EpochResultsFolder, EpochResultsFolderCallback
 
 
 class BatchwisePlayPenTrainer(BasePlayPen):
@@ -33,10 +32,10 @@ class BatchwisePlayPenTrainer(BasePlayPen):
         """
         super().__init__(learner, teacher)
         self.batch_size = 8
-        self.num_epochs = 4
+        self.num_epochs = 2
         self.episode_buffer = EpisodeBuffer()
         # setup callbacks for the clem benchmark run
-        results_folder = EpochResultsFolder(Path("playpen-records"), [learner, teacher])
+        results_folder = EpochResultsFolder(Path("playpen-records"), Model.to_identifier([learner, teacher]))
         model_infos = Model.to_infos([learner, teacher])
         self.callbacks = GameBenchmarkCallbackList([
             # a callback to collect episodes into the buffer during the benchmark run
@@ -46,9 +45,9 @@ class BatchwisePlayPenTrainer(BasePlayPen):
             # a callback to save the instance.json using the epoch result folder structure
             InstanceFileSaver(results_folder),
             # a callback to save the experiment.json using the epoch result folder structure
-            ExperimentFileSaver(results_folder, model_infos),
+            ExperimentFileSaver(results_folder, player_model_infos=model_infos),
             # a callback to save the interactions.json and requests.json using the epoch result folder structure
-            InteractionsFileSaver(results_folder, model_infos)
+            InteractionsFileSaver(results_folder, player_model_infos=model_infos)
         ])
 
     def learn(self, game_registry: GameRegistry):
@@ -56,30 +55,32 @@ class BatchwisePlayPenTrainer(BasePlayPen):
         game_spec = game_registry.get_game_specs_that_unify_with("taboo")[0]
 
         # We only use the training instances so that we can properly evaluate on the validation set later
-        dataset = load_dataset("colab-potsdam/playpen-data", "instances", split="train")
-        game_instance_iterator = GameInstanceIterator.from_game_spec(game_spec, sub_selector=to_sub_selector(dataset))
+        dataset_train = load_dataset("colab-potsdam/playpen-data", "instances", split="train")
 
         # We initialize the game benchmark which creates the game master for each game instance
         with GameBenchmark.load_from_spec(game_spec) as game_benchmark:
             # We run as many epochs over all game instances as specified
             for epoch in range(self.num_epochs):
                 # We collect the episodes using the batchwise runner from clemcore
-                self._collect_episodes(game_benchmark, game_instance_iterator)
+                self._collect_episodes(game_benchmark, dataset_train)
                 # We use the collected episodes to adjust model parameters of the learner
                 self._train()
 
-    def _collect_episodes(self, game_benchmark, game_instance_iterator):
+    def _collect_episodes(self, game_benchmark, dataset_train):
         # We reset the iterator to play all game instances once again
-        game_instance_iterator.reset(verbose=False)
+        game_instances = GameInstances.from_game_spec(game_benchmark.game_spec)
+        game_instances = game_instances.filter(to_instances_filter(dataset_train))
+
         # We reset the episode buffer before each epoch over game instances
         # Note: We could also collect episodes over multiple epochs by calling reset only later
         self.episode_buffer.reset()
+
         # We invoke the batchwise runner to collect the episode trajectories for the game instance,
         # so that all game instances are prepared first and then processed in batches. Note that
         # for this to work, the model backends must support batching! Otherwise, fallback to sequential.
         batchwise.run(
             game_benchmark,
-            game_instance_iterator,
+            game_instances,
             # Note: Here the order is important! We assign the roles so that:
             # - the teacher plays as the word describer (player at index 0)
             # - the learner plays as the word guesser (player at index 1)

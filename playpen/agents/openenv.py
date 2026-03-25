@@ -1,4 +1,4 @@
-from openenv_core.client_types import StepResult
+from openenv.core.client_types import StepResult
 from clemcore.clemgame.envs.openenv.models import ClemGameAction, ClemGameObservation
 
 from playpen.agents.base import BaseAgentWrapper, AgentObservation, AgentResponse
