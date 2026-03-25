@@ -11,7 +11,7 @@ from clemcore.clemgame import GameStep
 
 class PreferenceLike(Protocol):
 
-    def to_preference_dataset(self, perspective: Model, data_format="conversational") -> Dataset:
+    def to_preference_dataset(self, player_name: str, data_format="conversational") -> Dataset:
         """
         Transform the rollout buffer to a preference dataset for, e.g., DPO learning.
 
@@ -23,16 +23,18 @@ class PreferenceLike(Protocol):
                               "chosen": [{"role": "assistant", "content": "It is blue."}],
                               "rejected": [{"role": "assistant", "content": "It is green."}]}
 
-        :param perspective: of a model generating the responses
-        :param data_format: conversational or standard
-        :return: a preference dataset as described in https://huggingface.co/docs/trl/dataset_formats#preference
+        Args:
+            player_name: the perspective of the player given by name on the conversation
+            data_format: conversational or standard
+
+        Returns: A preference dataset as described in https://huggingface.co/docs/trl/dataset_formats#preference
         """
         return Dataset.from_list([])
 
 
 class ConversationLike(Protocol):
 
-    def to_conversational_dataset(self, perspective: Model) -> Dataset:
+    def to_conversational_dataset(self, player_name: str) -> Dataset:
         """
         Converts the data collected in the buffer into a dataset where each row represents a conversation.
 
@@ -48,7 +50,7 @@ class ConversationLike(Protocol):
 
         See also https://huggingface.co/docs/trl/dataset_formats#conversational
         Args:
-            perspective: to take in the dataset as specified by the given model
+            player_name: the perspective of the player given by name on the conversation
         Returns: the Dataset
         """
         return Dataset.from_list([])
@@ -165,33 +167,28 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
         self._branching_points = []
         self._trajectories = []
 
-    def _to_messages(self, steps: list[GameStep], perspective: Model) -> list[dict]:
-        """Convert a list of GameSteps to HuggingFace TRL messages from the given perspective.
-        The perspective model is always 'assistant', all other models are 'user'.
-        """
-        messages = []
-        for step in steps:
-            if step.model_name == perspective.name:
-                messages.append(step.context)  # already {"role": "user", "content": "..."}
-                messages.append({"role": "assistant", "content": step.response})
-            else:
-                messages.append({**step.context, "role": "assistant"})
-                messages.append({"role": "user", "content": step.response})
-        return messages
-
-    def to_conversational_dataset(self, perspective: Model) -> Dataset:
+    def to_conversational_dataset(self, player_name: str) -> Dataset:
         """Convert collected branching points to a conversational dataset.
 
         Args:
-            perspective: of the model whose responses are to be included in the dataset
+            player_name: the perspective of the player given by name on the conversation
         """
         dataset = []
         for trajectory, episode_score in self._trajectories:
-            messages = self._to_messages(trajectory, perspective)
+            messages = []
+            for step in trajectory:
+                if step.player_name == player_name:
+                    messages.append(step.context)  # {"role": "user", ...} - GM prompt/mediator message
+                    messages.append({"role": "assistant", "content": step.response})
             dataset.append({"messages": messages})
         return Dataset.from_list(dataset)
 
-    def to_preference_dataset(self, perspective: Model, data_format="conversational") -> Dataset:
+    def to_preference_dataset(
+            self,
+            player_name: str,
+            data_format="conversational",
+            require_different_scores: bool = True
+    ) -> Dataset:
         """Convert collected branching points to a preference dataset for DPO training.
 
         Groups branching points by branching_point_id to find siblings — branches that
@@ -204,6 +201,9 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
             data_format: "conversational" (default) or "standard" as per HuggingFace TRL format
                 See: https://huggingface.co/docs/trl/dataset_formats#preference
         """
+        if data_format != "conversational":
+            raise NotImplementedError("Only conversational format is implemented for now.")
+
         groups = defaultdict(list)
         for branching_point in self._branching_points:
             groups[branching_point.branching_point_id].append(branching_point)
@@ -214,10 +214,21 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
                 continue
             ranked = sorted(siblings, key=lambda s: s.episode_score, reverse=True)
             chosen, rejected = ranked[0], ranked[-1]
-            if math.isclose(chosen.episode_score, rejected.episode_score, abs_tol=1e-6):
+            if require_different_scores and math.isclose(chosen.episode_score, rejected.episode_score, abs_tol=1e-6):
                 continue
+
+            # Build prompt from shared trajectory up to divergence point
+            prompt = []
+            for step in chosen.prompt:
+                if step.player_name == player_name:
+                    prompt.append(step.context)  # {"role": "user", ...} - GM prompt
+                    prompt.append({"role": "assistant", "content": step.response})
+
+            # Add the final GM message that prompted the diverging response
+            prompt.append(chosen.diverging_step.context)
+
             pairs.append({
-                "prompt": self._to_messages(chosen.prompt, perspective),
+                "prompt": prompt,
                 "chosen": [{"role": "assistant", "content": chosen.diverging_step.response}],
                 "rejected": [{"role": "assistant", "content": rejected.diverging_step.response}],
             })
