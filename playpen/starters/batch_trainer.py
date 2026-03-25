@@ -92,7 +92,8 @@ class BatchwisePlayPenTrainer(BasePlaypenTrainer):
 
     def _train(self):
         # Convert the collected trajectories into conversational data format
-        conversational_dataset = self.episode_buffer.to_conversational_dataset(self.learner)
+        # Must be implemented by inheriting EpisodeBuffer
+        conversational_dataset = self.episode_buffer.to_conversational_dataset("Player 2")  # Guesser
         print("Collected episodes (perspective=learner):", len(conversational_dataset))
         print("Example episode:")
         for conversation in conversational_dataset:
