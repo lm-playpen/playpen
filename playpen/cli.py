@@ -145,6 +145,7 @@ def evaluate(suite: str, model_spec: ModelSpec, gen_args: Dict, results_dir: Pat
         stat_score = evaluate_suite("static", model_spec, gen_args, results_dir, _game_selector, dataset_name)
         store_eval_score(overall_results_file, "statscore", stat_score)
 
+
 def cli(args: argparse.Namespace):
     if args.command_name == "list":
         if args.mode == "games":
