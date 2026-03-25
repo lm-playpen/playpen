@@ -1,3 +1,4 @@
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from threading import Lock
@@ -213,7 +214,7 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
                 continue
             ranked = sorted(siblings, key=lambda s: s.episode_score, reverse=True)
             chosen, rejected = ranked[0], ranked[-1]
-            if chosen.episode_score == rejected.episode_score:
+            if math.isclose(chosen.episode_score, rejected.episode_score, abs_tol=1e-6):
                 continue
             pairs.append({
                 "prompt": self._to_messages(chosen.prompt, perspective),
