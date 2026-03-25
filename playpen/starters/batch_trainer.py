@@ -5,14 +5,14 @@ from clemcore.backends import Model
 from clemcore.clemgame import GameRegistry, GameInstances, GameBenchmarkCallbackList, GameBenchmark, \
     InstanceFileSaver, ExperimentFileSaver, InteractionsFileSaver, EpochResultsFolder, EpochResultsFolderCallback
 from clemcore.clemgame.runners import batchwise
-from playpen import BasePlayPen, to_instances_filter
+from playpen import BasePlaypenTrainer, to_instances_filter
 from datasets import load_dataset
 
 from playpen.buffers import EpisodeBuffer
 from playpen.callbacks.buffers import EpisodeBufferCallback
 
 
-class BatchwisePlayPenTrainer(BasePlayPen):
+class BatchwisePlayPenTrainer(BasePlaypenTrainer):
 
     def __init__(self, learner: Model, teacher: Model):
         """Showcase using the game of Taboo, which requires two players.

@@ -9,7 +9,7 @@ from datetime import datetime
 
 import clemcore.cli as clem
 from clemcore.backends import ModelSpec, ModelRegistry, BackendRegistry
-from clemcore.clemgame import GameRegistry, GameSpec
+from clemcore.clemgame import GameSpec
 from playpen import BasePlaypenTrainer, to_instances_filter
 
 
