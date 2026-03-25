@@ -3,9 +3,9 @@ from peft import LoraConfig
 from datasets import load_dataset
 
 from clemcore.backends.huggingface_local_api import HuggingfaceLocalModel
-from clemcore.clemgame import GameRegistry
 
 from playpen import BasePlaypenTrainer
+
 
 class PeftSftTrainer(BasePlaypenTrainer):
 
