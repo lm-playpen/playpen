@@ -15,7 +15,7 @@ class EpisodeBufferCallback(GameBenchmarkCallback):
         self.episode_buffer.next_episode()
 
     def on_game_step(self, game_master: "GameMaster", game_instance: Dict, game_step: GameStep):
-        self.episode_buffer.add_step(game_step.context, game_step.response, game_step.done, game_step.info)
+        self.episode_buffer.add_step(game_step)
 
 
 def average_rewards(rewards: dict):
