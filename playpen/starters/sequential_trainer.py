@@ -49,8 +49,9 @@ class BatchwisePlayPenTrainer(BasePlaypenTrainer):
             InteractionsFileSaver(results_folder, player_model_infos=model_infos)
         ])
 
-    def learn(self, game_registry: GameRegistry):
+    def learn(self):
         # We use the taboo game to showcase the basic playpen flow
+        game_registry = GameRegistry.from_directories_and_cwd_files()
         game_spec = game_registry.get_game_specs_that_unify_with("taboo")[0]
 
         # We only use the training instances so that we can properly evaluate on the validation set later
