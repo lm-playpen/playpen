@@ -20,3 +20,4 @@ key.json
 model_registry.json
 trainer*.py
 CLAUDE.md
+.aider*
