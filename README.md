@@ -50,6 +50,12 @@ If you are interested in running the provided training examples, you should inst
 pip install '.[trl]'
 ```
 
+Furthermore, if you want to run the prepared trainers in `examples/trl` with local huggingface models, you should install the `huggingface` extra. If you do not want this, you can still use the `trl` extra to run the trainers with remote models.
+```bash
+pip install 'clemcore[huggingface]'
+```
+Note: If you want to use the `transformers` library directly, you cannot use the playpen CLI to run the trainers, but you have to run your own scripts.
+
 Now that everything is set up, you may follow the next steps to enter deeper into how to train and evaluate a model.
 # Evaluate a model
 ## model_registry.json
