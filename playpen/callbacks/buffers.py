@@ -1,7 +1,7 @@
 from copy import deepcopy
 from typing import Dict, Callable
 
-from clemcore.clemgame import GameBenchmarkCallback, GameStep, GameMaster
+from clemcore.clemgame import GameBenchmarkCallback, GameStep, GameMaster, GameSnapshot
 
 from playpen.buffers import EpisodeBuffer, BranchingEpisodeBuffer
 
@@ -67,7 +67,7 @@ class BranchingEpisodeBufferCallback(GameBenchmarkCallback):
                  score_func: Callable[[Dict[str, float]], float] = average_rewards):
         self.episode_buffer = episode_buffer
         self.score_func = score_func
-        self._trajectory_markers: list[tuple[str, int]] = []  # (branching_point_id, turn index)
+        self._trajectory_markers: list[tuple[GameSnapshot, int]] = []  # (branching_point_id, turn index)
         self._trajectory: list[GameStep] = []
 
     def __deepcopy__(self, memo):
@@ -80,18 +80,19 @@ class BranchingEpisodeBufferCallback(GameBenchmarkCallback):
         new._trajectory = deepcopy(self._trajectory, memo)
         return new
 
-    def on_branching_point(self, game_master, game_instance, branching_point_id: str):
-        """Called by BranchingRunner when a branching point is reached.
+    def on_branching_point(self, game_master: "GameMaster", game_instance: Dict, snapshot: GameSnapshot):
+        """Called by BranchingRunner for each new branch when a branching condition is met.
 
-        Records a lightweight marker — the branching_point_id and the current trajectory
-        length — so we can later slice the full trajectory at the correct divergence point
+        Records a snapshot and the current trajectory length. In this way,
+        we can later slice the full trajectory at the correct divergence point
         on game end. Does NOT store a copy of the trajectory at this point.
 
-        Args:
-            branching_point_id: Identifies this branching point — shared across all siblings
-                that diverged here, used to group them for preference pair creation.
+        Note:
+            The snapshot identifies this branching point by its origin, which is
+            shared across all siblings that diverged here,
+            used to group them for preference pair creation.
         """
-        self._trajectory_markers.append((branching_point_id, len(self._trajectory)))
+        self._trajectory_markers.append((snapshot, len(self._trajectory)))
 
     def on_game_step(self, game_master, game_instance, game_step: GameStep):
         """Accumulates the full trajectory for this branch, step by step."""
@@ -104,15 +105,11 @@ class BranchingEpisodeBufferCallback(GameBenchmarkCallback):
         trajectory at each marker and add the resulting BranchingPoints to the shared
         buffer. This allows to_preference_dataset to create preference pairs at every
         level of the branching tree, not just the final turn.
-
-        Args:
-            rewards: Dict of agent_id -> reward, aggregated via score_func into a single
-                episode_score. If None or exception is set, the branch is skipped.
         """
         if exception is not None:
             return
         episode_score = self.score_func(rewards)
-        for branching_point_id, turn in self._trajectory_markers:
-            self.episode_buffer.add_branching_point(branching_point_id, turn, self._trajectory, episode_score)
+        for game_snapshot, turn in self._trajectory_markers:
+            self.episode_buffer.add_branching_point(game_snapshot, turn, self._trajectory, episode_score)
         self._trajectory = []
         self._trajectory_markers = []

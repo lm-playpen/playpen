@@ -5,8 +5,7 @@ from threading import Lock
 from typing import List, Dict, Any, Protocol
 from datasets import Dataset
 
-from clemcore.backends import Model
-from clemcore.clemgame import GameStep
+from clemcore.clemgame import GameStep, GameSnapshot
 
 
 class PreferenceLike(Protocol):
@@ -89,14 +88,14 @@ class EpisodeBuffer(ConversationLike):
 @dataclass
 class BranchingPoint:
     """A snapshot of a trajectory up to and including the point where it diverged
-    from its siblings. Siblings share the same branching_point_id and the same
+    from its siblings. Siblings share the same snapshot and the same
     prompt, but differ in their response and episode_score.
 
     Note that trajectory is a SUB-trajectory — it is sliced from the full episode
     trajectory at the divergence point, so it only contains steps up to and including
     the diverging response. The full episode trajectory is not stored here.
     """
-    branching_point_id: str
+    game_snapshot: GameSnapshot
     trajectory: list[GameStep]  # sub-trajectory up to and including the diverging response
     episode_score: float
 
@@ -107,7 +106,7 @@ class BranchingPoint:
 
     @property
     def diverging_step(self) -> GameStep:
-        """The diverging response — differs across siblings with the same branching_point_id."""
+        """The diverging response — differs across siblings with the same snapshot origin."""
         return self.trajectory[-1]
 
 
@@ -123,7 +122,7 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
     branching point it passed through, so a branch that passed through 3 branching points
     adds 3 entries to the buffer, each with a different sub-trajectory length.
 
-    Siblings — branches that share the same branching_point_id — can then be compared in
+    Siblings — branches that share the same snapshot origin — can then be compared in
     to_preference_dataset to form chosen/rejected pairs for DPO training.
 
     Note on to_conversational_dataset:
@@ -142,22 +141,27 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
         # so that all branches contribute their branching points to the same collection.
         return self
 
-    def add_branching_point(self, branching_point_id: str, branch_turn: int, trajectory: list[GameStep],
-                            episode_score: float):
+    def add_branching_point(
+            self,
+            game_snapshot: GameSnapshot,
+            branch_turn: int,
+            trajectory: list[GameStep],
+            episode_score: float
+    ):
         """Add a branching point to the buffer.
 
         Slices the full trajectory at branch_turn+1 so only the relevant sub-trajectory
         is stored. Thread-safe via internal lock.
 
         Args:
-            branching_point_id: Identifies the branching point — shared across siblings
+            game_snapshot: Identifies the branching point — shared across siblings
             branch_turn: Index into the full trajectory where divergence occurred
             trajectory: The full episode trajectory — will be sliced, not stored in full
             episode_score: The final outcome score for this branch
         """
         sub_trajectory = trajectory[:branch_turn + 1]
         with self._lock:
-            self._branching_points.append(BranchingPoint(branching_point_id, sub_trajectory, episode_score))
+            self._branching_points.append(BranchingPoint(game_snapshot, sub_trajectory, episode_score))
             # Store full trajectory only once per branch (identified by the last marker)
             # We deduplicate by checking if this exact trajectory is already stored
             if not any(t is trajectory for t, _ in self._trajectories):
@@ -191,13 +195,20 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
     ) -> Dataset:
         """Convert collected branching points to a preference dataset for DPO training.
 
-        Groups branching points by branching_point_id to find siblings — branches that
+        Groups branching points by snapshot origin to find siblings — branches that
         diverged from the same point. Within each sibling group, ranks by episode_score
         and forms chosen/rejected pairs. Skips groups where all siblings have the same
         score, as these provide no preference signal.
 
+        Note:
+            The outcome difference might be driven by later turns, not the turn 1 response itself.
+            The turn 1 preference signal is "noisier" because there are many confounding factors downstream.
+            This is actually a known issue in RLHF/DPO literature — preference pairs are most reliable
+            when the divergence point is close to the outcome. Some approaches weight pairs by
+            "proximity to outcome" or only use the last branching point.
+
         Args:
-            perspective: The model whose responses form the chosen/rejected pairs
+            player_name: The player whose responses form the chosen/rejected pairs
             data_format: "conversational" (default) or "standard" as per HuggingFace TRL format
                 See: https://huggingface.co/docs/trl/dataset_formats#preference
         """
@@ -206,7 +217,7 @@ class BranchingEpisodeBuffer(ConversationLike, PreferenceLike):
 
         groups = defaultdict(list)
         for branching_point in self._branching_points:
-            groups[branching_point.branching_point_id].append(branching_point)
+            groups[branching_point.game_snapshot.origin].append(branching_point)
 
         pairs = []
         for siblings in groups.values():
