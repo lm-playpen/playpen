@@ -9,6 +9,8 @@ If you're here just because you find simulating learning from and in interaction
 
 # The LM-Playschool Shared Task, 2026 Edition
 
+**The results are now available at: <https://github.com/lm-playpen/lm-playschool-2026-final-results>!!**
+
 You have probably come here via the [Offical Shared Task Description](https://lm-playschool.github.io/challenge/). (If not, go there and read up on the rules, and register your team if you haven't already.)
 
 The shared task will require you minimally to use the Playpen (the code you find in this repository here) to evaluate the model you want to contribute. So go to [the setup instructions](./SETUP.md) now to set this up.
